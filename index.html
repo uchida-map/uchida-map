@@ -1,65 +1,45 @@
 <!DOCTYPE html>
-<html lang="ja">
+<html>
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>uchida-map</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
   <style>
-    body {
-      font-family: sans-serif;
-      margin: 0;
-      padding: 20px;
-      background: #f5f5f5;
-    }
-    h2, h3 {
-      text-align: center;
-    }
-    #map {
-      height: 400px;
-      width: 100%;
-      margin-bottom: 20px;
-      border: 2px solid #ccc;
-      border-radius: 8px;
-    }
-    #imageList {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 15px;
-      justify-content: center;
-    }
+    body { font-family: sans-serif; margin: 0; padding: 1rem; background: #f9f9f9; }
+    h2, h3 { color: #333; }
+    #map { height: 400px; width: 100%; margin-bottom: 20px; }
+    #imageList { display: flex; flex-wrap: wrap; gap: 10px; }
     .imageItem {
       background: white;
-      border-radius: 8px;
-      box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+      border-radius: 10px;
       padding: 10px;
       width: 200px;
+      box-shadow: 0 2px 5px rgba(0,0,0,0.1);
       font-size: 0.9em;
       cursor: pointer;
     }
     .imageItem img {
       max-width: 100%;
+      border-radius: 6px;
       display: block;
       margin-bottom: 5px;
-      border-radius: 4px;
     }
     textarea {
       width: 100%;
       height: 50px;
       resize: vertical;
+      border: 1px solid #ccc;
+      border-radius: 5px;
     }
-    .delete-btn {
+    button.deleteBtn {
       background: #e74c3c;
       color: white;
       border: none;
-      padding: 5px 10px;
-      border-radius: 4px;
-      cursor: pointer;
+      border-radius: 5px;
       margin-top: 5px;
-    }
-    @media (max-width: 768px) {
-      #map { height: 300px; }
-      .imageItem { width: 90%; font-size: 0.85em; }
+      padding: 5px 8px;
+      cursor: pointer;
     }
   </style>
 </head>
@@ -67,20 +47,31 @@
   <h2>写真をアップロードしてください</h2>
   <input type="file" id="fileInput" accept="image/*" multiple />
   <div id="map"></div>
-  <h3>画像一覧とメモ（自動保存）</h3>
+  <h3>画像一覧とメモ</h3>
   <div id="imageList"></div>
 
   <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/exif-js"></script>
+
   <script>
     const map = L.map('map').setView([35.6812, 139.7671], 5);
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
     const imageList = document.getElementById('imageList');
-    const fileInput = document.getElementById('fileInput');
 
-    const STORAGE_KEY = "uchida_photos";
-    let allPhotos = [];
+    // IndexedDB 設定
+    let db;
+    const request = indexedDB.open("uchidaMapDB", 1);
+    request.onerror = () => alert("IndexedDB の初期化に失敗しました");
+    request.onsuccess = (e) => {
+      db = e.target.result;
+      loadAllPhotos();
+    };
+    request.onupgradeneeded = (e) => {
+      db = e.target.result;
+      db.createObjectStore("photos", { keyPath: "id", autoIncrement: true });
+    };
 
+    // 座標変換
     function convertToDecimal(coord, ref) {
       const d = coord[0].numerator / coord[0].denominator;
       const m = coord[1].numerator / coord[1].denominator;
@@ -89,107 +80,117 @@
       return (ref === 'S' || ref === 'W') ? -dec : dec;
     }
 
-    function saveToStorage(dataArray) {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(dataArray));
+    // 画像を読み込んで保存
+    document.getElementById('fileInput').addEventListener('change', function (e) {
+      const files = Array.from(e.target.files);
+      if (files.length === 0) return;
+
+      files.forEach(file => {
+        const reader = new FileReader();
+        reader.onload = function (event) {
+          const base64 = event.target.result;
+          const img = new Image();
+          img.onload = function () {
+            EXIF.getData(img, function () {
+              const lat = EXIF.getTag(this, "GPSLatitude");
+              const lng = EXIF.getTag(this, "GPSLongitude");
+              const latRef = EXIF.getTag(this, "GPSLatitudeRef");
+              const lngRef = EXIF.getTag(this, "GPSLongitudeRef");
+
+              if (lat && lng && latRef && lngRef) {
+                const latitude = convertToDecimal(lat, latRef);
+                const longitude = convertToDecimal(lng, lngRef);
+
+                const photoData = {
+                  base64,
+                  lat: latitude,
+                  lng: longitude,
+                  memo: ""
+                };
+
+                savePhoto(photoData);
+              } else {
+                alert(`位置情報が含まれていない画像: ${file.name}`);
+              }
+            });
+          };
+          img.src = base64;
+        };
+        reader.readAsDataURL(file);
+      });
+    });
+
+    // IndexedDBに保存
+    function savePhoto(photoData) {
+      const tx = db.transaction("photos", "readwrite");
+      const store = tx.objectStore("photos");
+      const req = store.add(photoData);
+      req.onsuccess = () => loadAllPhotos(); // 保存後再読み込み
     }
 
-    function loadFromStorage() {
-      const saved = localStorage.getItem(STORAGE_KEY);
-      return saved ? JSON.parse(saved) : [];
+    // IndexedDBから全件読み込み
+    function loadAllPhotos() {
+      imageList.innerHTML = "";
+      const tx = db.transaction("photos", "readonly");
+      const store = tx.objectStore("photos");
+      const req = store.openCursor();
+
+      req.onsuccess = (e) => {
+        const cursor = e.target.result;
+        if (cursor) {
+          const photo = cursor.value;
+          addImageToPage(photo, cursor.key);
+          cursor.continue();
+        }
+      };
     }
 
-    function addImageToPage(photoData, save = false) {
-      const { base64, lat, lng, memo } = photoData;
-
+    // 表示＆編集
+    function addImageToPage(photo, key) {
+      const { base64, lat, lng, memo } = photo;
       const marker = L.marker([lat, lng]).addTo(map);
-      const popupContent = () => `<img src="${base64}" width="150"><br><p>${photoData.memo}</p>`;
+      const popupContent = () => `<img src="${base64}" width="150"><br><p>${photo.memo}</p>`;
       marker.bindPopup(popupContent());
 
       const item = document.createElement('div');
       item.className = 'imageItem';
       item.innerHTML = `
         <img src="${base64}">
-        <textarea placeholder="ここにメモを書けます">${memo}</textarea>
-        <button class="delete-btn">削除</button>
+        <textarea>${memo}</textarea>
+        <button class="deleteBtn">削除</button>
       `;
 
-      const textarea = item.querySelector('textarea');
-      textarea.addEventListener('input', () => {
-        photoData.memo = textarea.value;
-        saveToStorage(allPhotos);
+      const textarea = item.querySelector("textarea");
+      textarea.addEventListener("input", () => {
+        photo.memo = textarea.value;
+        updatePhoto(key, photo);
         marker.setPopupContent(popupContent());
       });
 
-      item.querySelector('img').addEventListener('click', () => {
+      item.querySelector("img").addEventListener("click", () => {
         map.setView([lat, lng], 15);
         marker.openPopup();
       });
 
-      item.querySelector('.delete-btn').addEventListener('click', () => {
-        if (confirm("この画像を削除しますか？")) {
-          imageList.removeChild(item);
-          map.removeLayer(marker);
-          allPhotos = allPhotos.filter(p => p.base64 !== photoData.base64);
-          saveToStorage(allPhotos);
-        }
+      item.querySelector(".deleteBtn").addEventListener("click", () => {
+        deletePhoto(key);
       });
 
       imageList.appendChild(item);
-
-      if (save) {
-        allPhotos.push(photoData);
-        saveToStorage(allPhotos);
-      }
     }
 
-    // 保存データの読み込み
-    allPhotos = loadFromStorage();
-    allPhotos.forEach(photo => addImageToPage(photo));
+    // 更新
+    function updatePhoto(key, data) {
+      const tx = db.transaction("photos", "readwrite");
+      tx.objectStore("photos").put({ ...data, id: key });
+    }
 
-    // ファイル選択時の処理（1枚ずつ確実に保存）
-    fileInput.addEventListener('change', async function (e) {
-      const files = Array.from(e.target.files);
-      if (files.length === 0) return;
-
-      for (const file of files) {
-        await new Promise((resolve) => {
-          const reader = new FileReader();
-          reader.onload = function (event) {
-            const base64 = event.target.result;
-            const img = new Image();
-            img.onload = function () {
-              EXIF.getData(img, function () {
-                const lat = EXIF.getTag(this, "GPSLatitude");
-                const lng = EXIF.getTag(this, "GPSLongitude");
-                const latRef = EXIF.getTag(this, "GPSLatitudeRef");
-                const lngRef = EXIF.getTag(this, "GPSLongitudeRef");
-
-                if (lat && lng && latRef && lngRef) {
-                  const latitude = convertToDecimal(lat, latRef);
-                  const longitude = convertToDecimal(lng, lngRef);
-
-                  const newPhoto = {
-                    base64: base64,
-                    lat: latitude,
-                    lng: longitude,
-                    memo: ""
-                  };
-
-                  addImageToPage(newPhoto, true);
-                } else {
-                  alert(`位置情報が含まれていない画像: ${file.name}`);
-                }
-                resolve();
-              });
-            };
-            img.src = base64;
-          };
-          reader.readAsDataURL(file);
-        });
-      }
-
-      fileInput.value = ""; // 選択初期化
-    });
+    // 削除
+    function deletePhoto(key) {
+      const tx = db.transaction("photos", "readwrite");
+      tx.objectStore("photos").delete(key);
+      loadAllPhotos();
+    }
   </script>
 </body>
 </html>
