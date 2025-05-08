@@ -1,17 +1,17 @@
 <!DOCTYPE html>
-<html lang="ja">
+<html>
 <head>
-  <meta charset="UTF-8" />
+  <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>uchida-map</title>
-  <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
   <link rel="stylesheet" href="style.css" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
 </head>
 <body>
   <header>
     <h1>あなたの旅の思い出を地図上に</h1>
     <nav>
-      <a href="index.html">地図ページ</a>
+      <a href="index.html">地図</a>
       <a href="how-to.html">使い方</a>
       <a href="contact.html">コンタクト</a>
     </nav>
@@ -19,20 +19,20 @@
 
   <main>
     <section class="upload-section">
-      <label for="fileInput">写真をアップロード：</label>
+      <label>写真をアップロード：</label><br>
       <input type="file" id="fileInput" accept="image/*" multiple />
     </section>
 
     <div id="map"></div>
 
     <section class="image-section">
-      <h2>アップロード画像とメモ</h2>
+      <h2>写真とメモ一覧</h2>
       <div id="imageList"></div>
     </section>
   </main>
 
   <footer>
-    <p>&copy; 2025 Uchida Map</p>
+    &copy; 2025 Uchida Map Project
   </footer>
 
   <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
@@ -40,10 +40,11 @@
   <script>
     const map = L.map('map').setView([35.6812, 139.7671], 5);
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+
+    const fileInput = document.getElementById('fileInput');
     const imageList = document.getElementById('imageList');
     const STORAGE_KEY = "uchida_photos";
-
-    let allPhotos = loadFromStorage();
+    let allPhotos = [];
 
     function convertToDecimal(coord, ref) {
       const d = coord[0].numerator / coord[0].denominator;
@@ -72,7 +73,7 @@
       const item = document.createElement('div');
       item.className = 'imageItem';
       item.innerHTML = `
-        <img src="${base64}" alt="写真">
+        <img src="${base64}">
         <textarea placeholder="ここにメモを書けます">${memo}</textarea>
         <button class="delete-btn">削除</button>
       `;
@@ -92,7 +93,7 @@
       item.querySelector('.delete-btn').addEventListener('click', () => {
         imageList.removeChild(item);
         map.removeLayer(marker);
-        allPhotos = allPhotos.filter(p => !(p.base64 === base64 && p.lat === lat && p.lng === lng));
+        allPhotos = allPhotos.filter(p => p.base64 !== photoData.base64);
         saveToStorage(allPhotos);
       });
 
@@ -104,9 +105,10 @@
       }
     }
 
+    allPhotos = loadFromStorage();
     allPhotos.forEach(photo => addImageToPage(photo));
 
-    document.getElementById('fileInput').addEventListener('change', function (e) {
+    fileInput.addEventListener('change', function (e) {
       const files = Array.from(e.target.files);
       if (files.length === 0) return;
 
@@ -143,8 +145,9 @@
         };
         reader.readAsDataURL(file);
       });
+
+      fileInput.value = ""; // 入力初期化
     });
   </script>
 </body>
 </html>
-
