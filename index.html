@@ -1,48 +1,83 @@
 <!DOCTYPE html>
-<html>
+<html lang="ja">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>uchida-map</title>
-  <link rel="stylesheet" href="style.css" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
+  <style>
+    body {
+      font-family: sans-serif;
+      margin: 0;
+      padding: 20px;
+      background: #f5f5f5;
+    }
+    h2, h3 {
+      text-align: center;
+    }
+    #map {
+      height: 400px;
+      width: 100%;
+      margin-bottom: 20px;
+      border: 2px solid #ccc;
+      border-radius: 8px;
+    }
+    #imageList {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 15px;
+      justify-content: center;
+    }
+    .imageItem {
+      background: white;
+      border-radius: 8px;
+      box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+      padding: 10px;
+      width: 200px;
+      font-size: 0.9em;
+      cursor: pointer;
+    }
+    .imageItem img {
+      max-width: 100%;
+      display: block;
+      margin-bottom: 5px;
+      border-radius: 4px;
+    }
+    textarea {
+      width: 100%;
+      height: 50px;
+      resize: vertical;
+    }
+    .delete-btn {
+      background: #e74c3c;
+      color: white;
+      border: none;
+      padding: 5px 10px;
+      border-radius: 4px;
+      cursor: pointer;
+      margin-top: 5px;
+    }
+    @media (max-width: 768px) {
+      #map { height: 300px; }
+      .imageItem { width: 90%; font-size: 0.85em; }
+    }
+  </style>
 </head>
 <body>
-  <header>
-    <h1>あなたの旅の思い出を地図上に</h1>
-    <nav>
-      <a href="index.html">地図</a>
-      <a href="how-to.html">使い方</a>
-      <a href="contact.html">コンタクト</a>
-    </nav>
-  </header>
-
-  <main>
-    <section class="upload-section">
-      <label>写真をアップロード：</label><br>
-      <input type="file" id="fileInput" accept="image/*" multiple />
-    </section>
-
-    <div id="map"></div>
-
-    <section class="image-section">
-      <h2>写真とメモ一覧</h2>
-      <div id="imageList"></div>
-    </section>
-  </main>
-
-  <footer>
-    &copy; 2025 Uchida Map Project
-  </footer>
+  <h2>写真をアップロードしてください</h2>
+  <input type="file" id="fileInput" accept="image/*" multiple />
+  <div id="map"></div>
+  <h3>画像一覧とメモ（自動保存）</h3>
+  <div id="imageList"></div>
 
   <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/exif-js"></script>
   <script>
     const map = L.map('map').setView([35.6812, 139.7671], 5);
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
-
-    const fileInput = document.getElementById('fileInput');
     const imageList = document.getElementById('imageList');
+    const fileInput = document.getElementById('fileInput');
+
     const STORAGE_KEY = "uchida_photos";
     let allPhotos = [];
 
@@ -91,10 +126,12 @@
       });
 
       item.querySelector('.delete-btn').addEventListener('click', () => {
-        imageList.removeChild(item);
-        map.removeLayer(marker);
-        allPhotos = allPhotos.filter(p => p.base64 !== photoData.base64);
-        saveToStorage(allPhotos);
+        if (confirm("この画像を削除しますか？")) {
+          imageList.removeChild(item);
+          map.removeLayer(marker);
+          allPhotos = allPhotos.filter(p => p.base64 !== photoData.base64);
+          saveToStorage(allPhotos);
+        }
       });
 
       imageList.appendChild(item);
@@ -105,48 +142,53 @@
       }
     }
 
+    // 保存データの読み込み
     allPhotos = loadFromStorage();
     allPhotos.forEach(photo => addImageToPage(photo));
 
-    fileInput.addEventListener('change', function (e) {
+    // ファイル選択時の処理（1枚ずつ確実に保存）
+    fileInput.addEventListener('change', async function (e) {
       const files = Array.from(e.target.files);
       if (files.length === 0) return;
 
-      files.forEach(file => {
-        const reader = new FileReader();
-        reader.onload = function (event) {
-          const base64 = event.target.result;
-          const img = new Image();
-          img.onload = function () {
-            EXIF.getData(img, function () {
-              const lat = EXIF.getTag(this, "GPSLatitude");
-              const lng = EXIF.getTag(this, "GPSLongitude");
-              const latRef = EXIF.getTag(this, "GPSLatitudeRef");
-              const lngRef = EXIF.getTag(this, "GPSLongitudeRef");
+      for (const file of files) {
+        await new Promise((resolve) => {
+          const reader = new FileReader();
+          reader.onload = function (event) {
+            const base64 = event.target.result;
+            const img = new Image();
+            img.onload = function () {
+              EXIF.getData(img, function () {
+                const lat = EXIF.getTag(this, "GPSLatitude");
+                const lng = EXIF.getTag(this, "GPSLongitude");
+                const latRef = EXIF.getTag(this, "GPSLatitudeRef");
+                const lngRef = EXIF.getTag(this, "GPSLongitudeRef");
 
-              if (lat && lng && latRef && lngRef) {
-                const latitude = convertToDecimal(lat, latRef);
-                const longitude = convertToDecimal(lng, lngRef);
+                if (lat && lng && latRef && lngRef) {
+                  const latitude = convertToDecimal(lat, latRef);
+                  const longitude = convertToDecimal(lng, lngRef);
 
-                const newPhoto = {
-                  base64: base64,
-                  lat: latitude,
-                  lng: longitude,
-                  memo: ""
-                };
+                  const newPhoto = {
+                    base64: base64,
+                    lat: latitude,
+                    lng: longitude,
+                    memo: ""
+                  };
 
-                addImageToPage(newPhoto, true);
-              } else {
-                alert(`位置情報が含まれていない画像: ${file.name}`);
-              }
-            });
+                  addImageToPage(newPhoto, true);
+                } else {
+                  alert(`位置情報が含まれていない画像: ${file.name}`);
+                }
+                resolve();
+              });
+            };
+            img.src = base64;
           };
-          img.src = base64;
-        };
-        reader.readAsDataURL(file);
-      });
+          reader.readAsDataURL(file);
+        });
+      }
 
-      fileInput.value = ""; // 入力初期化
+      fileInput.value = ""; // 選択初期化
     });
   </script>
 </body>
