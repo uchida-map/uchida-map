@@ -1,37 +1,26 @@
 <!DOCTYPE html>
 <html lang="ja">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>uchida-map</title>
-  <link rel="stylesheet" href="styles.css" />
+  <!-- Leaflet CSSの読み込み -->
   <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
+  <!-- 外部CSSファイルの読み込み -->
+  <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-  <header>
-    <h1>あなたの旅の思い出を地図上に</h1>
-    <nav>
-      <ul>
-        <li><a href="index.html">地図</a></li>
-        <li><a href="usage.html">使い方</a></li>
-        <li><a href="contact.html">お問い合わせ</a></li>
-      </ul>
-    </nav>
-  </header>
-
   <h2>写真をアップロードしてください</h2>
   <input type="file" id="fileInput" accept="image/*" multiple />
   <div id="map"></div>
   <h3>画像一覧とメモ（保存されます）</h3>
   <div id="imageList"></div>
 
-  <footer>
-    <p>&copy; 2025 Uchida Map. All Rights Reserved.</p>
-  </footer>
-
+  <!-- Leaflet JSの読み込み -->
   <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+  <!-- EXIF.jsの読み込み -->
   <script src="https://cdn.jsdelivr.net/npm/exif-js"></script>
+  <!-- アプリ用JavaScriptファイルの読み込み -->
   <script src="app.js"></script>
 </body>
 </html>
-
