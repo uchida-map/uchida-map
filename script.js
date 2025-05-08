@@ -1,27 +1,88 @@
-// script.js
 const map = L.map('map').setView([35.6812, 139.7671], 5);
 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
 
-const STORAGE_KEY = 'uchida_photos';
-let allPhotos = loadFromStorage();
+// IndexedDBの設定
+const DB_NAME = 'uchida_map_db';
+const DB_VERSION = 1;
+const DB_STORE_NAME = 'photos';
 
-function convertToDecimal(coord, ref) {
-  const d = coord[0].numerator / coord[0].denominator;
-  const m = coord[1].numerator / coord[1].denominator;
-  const s = coord[2].numerator / coord[2].denominator;
-  const dec = d + m / 60 + s / 3600;
-  return (ref === 'S' || ref === 'W') ? -dec : dec;
+// IndexedDBのオープンとデータストレージの準備
+let db;
+
+function openDatabase() {
+  return new Promise((resolve, reject) => {
+    const request = indexedDB.open(DB_NAME, DB_VERSION);
+
+    request.onupgradeneeded = (event) => {
+      const db = event.target.result;
+      if (!db.objectStoreNames.contains(DB_STORE_NAME)) {
+        db.createObjectStore(DB_STORE_NAME, { keyPath: 'base64' });
+      }
+    };
+
+    request.onsuccess = (event) => {
+      db = event.target.result;
+      resolve(db);
+    };
+
+    request.onerror = (event) => {
+      reject(event);
+    };
+  });
 }
 
-function saveToStorage() {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(allPhotos));
+// 写真データをIndexedDBに保存
+function saveToIndexedDB(photoData) {
+  return new Promise((resolve, reject) => {
+    const transaction = db.transaction(DB_STORE_NAME, 'readwrite');
+    const store = transaction.objectStore(DB_STORE_NAME);
+    const request = store.put(photoData);
+
+    request.onsuccess = () => {
+      resolve();
+    };
+
+    request.onerror = (event) => {
+      reject(event);
+    };
+  });
 }
 
-function loadFromStorage() {
-  const saved = localStorage.getItem(STORAGE_KEY);
-  return saved ? JSON.parse(saved) : [];
+// IndexedDBから全ての写真データを取得
+function getAllPhotosFromIndexedDB() {
+  return new Promise((resolve, reject) => {
+    const transaction = db.transaction(DB_STORE_NAME, 'readonly');
+    const store = transaction.objectStore(DB_STORE_NAME);
+    const request = store.getAll();
+
+    request.onsuccess = (event) => {
+      resolve(event.target.result);
+    };
+
+    request.onerror = (event) => {
+      reject(event);
+    };
+  });
 }
 
+// 写真を削除する
+function deletePhotoFromIndexedDB(base64) {
+  return new Promise((resolve, reject) => {
+    const transaction = db.transaction(DB_STORE_NAME, 'readwrite');
+    const store = transaction.objectStore(DB_STORE_NAME);
+    const request = store.delete(base64);
+
+    request.onsuccess = () => {
+      resolve();
+    };
+
+    request.onerror = (event) => {
+      reject(event);
+    };
+  });
+}
+
+// 写真をページに追加
 function addImageToPage(photoData) {
   const { base64, lat, lng, memo } = photoData;
   const marker = L.marker([lat, lng]).addTo(map);
@@ -36,9 +97,10 @@ function addImageToPage(photoData) {
     <textarea placeholder="メモを書く">${memo}</textarea>
     <button class="delete">削除</button>
   `;
+  
   item.querySelector('textarea').addEventListener('input', (e) => {
     photoData.memo = e.target.value;
-    saveToStorage();
+    saveToIndexedDB(photoData);
     marker.setPopupContent(popupContent());
   });
 
@@ -48,8 +110,7 @@ function addImageToPage(photoData) {
   });
 
   item.querySelector('.delete').addEventListener('click', () => {
-    allPhotos = allPhotos.filter(photo => photo.base64 !== base64);
-    saveToStorage();
+    deletePhotoFromIndexedDB(base64);
     imageList.removeChild(item);
     map.removeLayer(marker);
   });
@@ -57,6 +118,7 @@ function addImageToPage(photoData) {
   imageList.appendChild(item);
 }
 
+// 写真アップロード
 document.getElementById('fileInput').addEventListener('change', function (e) {
   const files = Array.from(e.target.files);
   if (files.length === 0) return;
@@ -85,8 +147,7 @@ document.getElementById('fileInput').addEventListener('change', function (e) {
             };
 
             addImageToPage(newPhoto);
-            allPhotos.push(newPhoto);
-            saveToStorage();
+            saveToIndexedDB(newPhoto);
           } else {
             alert(`位置情報が含まれていない画像: ${file.name}`);
           }
@@ -98,4 +159,10 @@ document.getElementById('fileInput').addEventListener('change', function (e) {
   });
 });
 
-allPhotos.forEach(photo => addImageToPage(photo));
+// 初期化処理：IndexedDBから既存の写真を読み込んで表示
+openDatabase().then(() => {
+  getAllPhotosFromIndexedDB().then((photos) => {
+    photos.forEach(photo => addImageToPage(photo));
+  });
+});
+
