@@ -65,23 +65,6 @@ function getAllPhotosFromIndexedDB() {
   });
 }
 
-// 写真を削除する
-function deletePhotoFromIndexedDB(base64) {
-  return new Promise((resolve, reject) => {
-    const transaction = db.transaction(DB_STORE_NAME, 'readwrite');
-    const store = transaction.objectStore(DB_STORE_NAME);
-    const request = store.delete(base64);
-
-    request.onsuccess = () => {
-      resolve();
-    };
-
-    request.onerror = (event) => {
-      reject(event);
-    };
-  });
-}
-
 // 写真をページに追加
 function addImageToPage(photoData) {
   const { base64, lat, lng, memo } = photoData;
