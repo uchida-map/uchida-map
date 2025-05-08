@@ -1,17 +1,42 @@
 <!DOCTYPE html>
-<html>
+<html lang="ja">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>uchida-map</title>
   <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
   <style>
     body { font-family: sans-serif; margin: 20px; }
-    #map { height: 400px; margin-bottom: 20px; }
-    #imageList { display: flex; flex-wrap: wrap; gap: 10px; }
-    .imageItem { border: 1px solid #ccc; padding: 10px; width: 200px; cursor: pointer; }
-    .imageItem img { max-width: 100%; display: block; margin-bottom: 5px; }
-    textarea { width: 100%; height: 50px; resize: vertical; }
+    #map { height: 400px; width: 100%; margin-bottom: 20px; }
+    #imageList { display: flex; flex-wrap: wrap; gap: 15px; }
+    .imageItem {
+      border: 1px solid #ccc;
+      border-radius: 10px;
+      padding: 10px;
+      width: 200px;
+      background: #f9f9f9;
+    }
+    .imageItem img {
+      width: 100%;
+      border-radius: 8px;
+    }
+    textarea {
+      width: 100%;
+      margin-top: 5px;
+      resize: vertical;
+    }
+    button {
+      margin-top: 5px;
+      background: #e74c3c;
+      color: white;
+      border: none;
+      padding: 5px 10px;
+      border-radius: 5px;
+      cursor: pointer;
+    }
+    button:hover {
+      background: #c0392b;
+    }
   </style>
 </head>
 <body>
@@ -26,12 +51,34 @@
   <script>
     const map = L.map('map').setView([35.6812, 139.7671], 5);
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
-
-    const dbName = 'uchidaMapDB';
-    const storeName = 'photos';
-    let db;
-
     const imageList = document.getElementById('imageList');
+
+    let db;
+    const dbRequest = indexedDB.open("uchidaMapDB", 1);
+    dbRequest.onupgradeneeded = function(event) {
+      db = event.target.result;
+      const store = db.createObjectStore("photos", { keyPath: "id", autoIncrement: true });
+      store.createIndex("base64", "base64", { unique: false });
+    };
+
+    dbRequest.onsuccess = function(event) {
+      db = event.target.result;
+      loadImages();
+    };
+
+    function loadImages() {
+      const tx = db.transaction("photos", "readonly");
+      const store = tx.objectStore("photos");
+      const request = store.openCursor();
+
+      request.onsuccess = function(event) {
+        const cursor = event.target.result;
+        if (cursor) {
+          addImageToPage(cursor.value);
+          cursor.continue();
+        }
+      };
+    }
 
     function convertToDecimal(coord, ref) {
       const d = coord[0].numerator / coord[0].denominator;
@@ -41,41 +88,9 @@
       return (ref === 'S' || ref === 'W') ? -dec : dec;
     }
 
-    function getUniqueId(file) {
-      return `${file.name}_${file.size}`;
-    }
-
-    function openDB() {
-      return new Promise((resolve, reject) => {
-        const request = indexedDB.open(dbName, 1);
-        request.onupgradeneeded = (e) => {
-          db = e.target.result;
-          db.createObjectStore(storeName, { keyPath: 'id' });
-        };
-        request.onsuccess = (e) => {
-          db = e.target.result;
-          resolve();
-        };
-        request.onerror = (e) => reject(e);
-      });
-    }
-
-    function savePhoto(photoData) {
-      const tx = db.transaction(storeName, 'readwrite');
-      tx.objectStore(storeName).put(photoData);
-    }
-
-    function loadPhotos() {
-      return new Promise((resolve) => {
-        const tx = db.transaction(storeName, 'readonly');
-        const store = tx.objectStore(storeName);
-        const request = store.getAll();
-        request.onsuccess = () => resolve(request.result);
-      });
-    }
-
     function addImageToPage(photoData) {
-      const { base64, lat, lng, memo } = photoData;
+      const { base64, lat, lng, memo, id } = photoData;
+
       const marker = L.marker([lat, lng]).addTo(map);
       const popupContent = () => `<img src="${base64}" width="150"><br><p>${photoData.memo}</p>`;
       marker.bindPopup(popupContent());
@@ -90,7 +105,7 @@
       const textarea = item.querySelector('textarea');
       textarea.addEventListener('input', () => {
         photoData.memo = textarea.value;
-        savePhoto(photoData);
+        updateMemo(photoData);
         marker.setPopupContent(popupContent());
       });
 
@@ -99,61 +114,86 @@
         marker.openPopup();
       });
 
+      const deleteButton = document.createElement('button');
+      deleteButton.textContent = '削除';
+      deleteButton.addEventListener('click', () => {
+        deleteImage(photoData.id);
+        imageList.removeChild(item);
+        map.removeLayer(marker);
+      });
+      item.appendChild(deleteButton);
+
       imageList.appendChild(item);
     }
 
-    document.getElementById('fileInput').addEventListener('change', async (e) => {
+    function updateMemo(photoData) {
+      const tx = db.transaction("photos", "readwrite");
+      const store = tx.objectStore("photos");
+      store.put(photoData);
+    }
+
+    function deleteImage(id) {
+      const tx = db.transaction("photos", "readwrite");
+      const store = tx.objectStore("photos");
+      store.delete(id);
+    }
+
+    document.getElementById('fileInput').addEventListener('change', function (e) {
       const files = Array.from(e.target.files);
-      const existingPhotos = await loadPhotos();
-      const existingIds = new Set(existingPhotos.map(p => p.id));
+      if (files.length === 0) return;
 
       files.forEach(file => {
-        const uniqueId = getUniqueId(file);
-        if (existingIds.has(uniqueId)) {
-          console.log("重複画像スキップ: ", file.name);
-          return;
-        }
-
         const reader = new FileReader();
         reader.onload = function (event) {
           const base64 = event.target.result;
-          const img = new Image();
-          img.onload = function () {
-            EXIF.getData(img, function () {
-              const lat = EXIF.getTag(this, "GPSLatitude");
-              const lng = EXIF.getTag(this, "GPSLongitude");
-              const latRef = EXIF.getTag(this, "GPSLatitudeRef");
-              const lngRef = EXIF.getTag(this, "GPSLongitudeRef");
 
-              if (lat && lng && latRef && lngRef) {
-                const latitude = convertToDecimal(lat, latRef);
-                const longitude = convertToDecimal(lng, lngRef);
+          const tx = db.transaction("photos", "readonly");
+          const store = tx.objectStore("photos");
+          const index = store.index("base64");
+          const checkRequest = index.get(base64);
+          checkRequest.onsuccess = function() {
+            if (checkRequest.result) {
+              console.log("重複画像をスキップ");
+              return;
+            }
 
-                const photoData = {
-                  id: uniqueId,
-                  base64,
-                  lat: latitude,
-                  lng: longitude,
-                  memo: ''
-                };
+            const img = new Image();
+            img.onload = function () {
+              EXIF.getData(img, function () {
+                const lat = EXIF.getTag(this, "GPSLatitude");
+                const lng = EXIF.getTag(this, "GPSLongitude");
+                const latRef = EXIF.getTag(this, "GPSLatitudeRef");
+                const lngRef = EXIF.getTag(this, "GPSLongitudeRef");
 
-                savePhoto(photoData);
-                addImageToPage(photoData);
-              } else {
-                alert("位置情報が含まれていない画像です: " + file.name);
-              }
-            });
+                if (lat && lng && latRef && lngRef) {
+                  const latitude = convertToDecimal(lat, latRef);
+                  const longitude = convertToDecimal(lng, lngRef);
+
+                  const newPhoto = {
+                    base64: base64,
+                    lat: latitude,
+                    lng: longitude,
+                    memo: ""
+                  };
+
+                  const tx2 = db.transaction("photos", "readwrite");
+                  const store2 = tx2.objectStore("photos");
+                  const addRequest = store2.add(newPhoto);
+                  addRequest.onsuccess = function (e) {
+                    newPhoto.id = addRequest.result;
+                    addImageToPage(newPhoto);
+                  };
+                } else {
+                  alert(`位置情報が含まれていない画像: ${file.name}`);
+                }
+              });
+            };
+            img.src = base64;
           };
-          img.src = base64;
         };
         reader.readAsDataURL(file);
       });
     });
-
-    openDB().then(() => {
-      loadPhotos().then(photos => photos.forEach(addImageToPage));
-    });
   </script>
 </body>
 </html>
-
