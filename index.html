@@ -108,7 +108,8 @@
                   memo: ""
                 };
 
-                savePhoto(photoData);
+                // 重複チェック
+                checkAndSavePhoto(photoData);
               } else {
                 alert(`位置情報が含まれていない画像: ${file.name}`);
               }
@@ -119,6 +120,28 @@
         reader.readAsDataURL(file);
       });
     });
+
+    // 重複チェックと保存
+    function checkAndSavePhoto(photoData) {
+      const tx = db.transaction("photos", "readonly");
+      const store = tx.objectStore("photos");
+      const req = store.openCursor();
+
+      req.onsuccess = (e) => {
+        const cursor = e.target.result;
+        let isDuplicate = false;
+        if (cursor) {
+          if (cursor.value.base64 === photoData.base64) {
+            isDuplicate = true; // 重複発見
+          }
+          cursor.continue();
+        }
+
+        if (!isDuplicate) {
+          savePhoto(photoData);
+        }
+      };
+    }
 
     // IndexedDBに保存
     function savePhoto(photoData) {
