@@ -100,8 +100,9 @@ function addImageToPage(photoData) {
   
   item.querySelector('textarea').addEventListener('input', (e) => {
     photoData.memo = e.target.value;
-    saveToIndexedDB(photoData);
-    marker.setPopupContent(popupContent());
+    saveToIndexedDB(photoData).then(() => {
+      marker.setPopupContent(popupContent());
+    });
   });
 
   item.querySelector('img').addEventListener('click', () => {
@@ -163,6 +164,7 @@ document.getElementById('fileInput').addEventListener('change', function (e) {
 openDatabase().then(() => {
   getAllPhotosFromIndexedDB().then((photos) => {
     photos.forEach(photo => addImageToPage(photo));
+  }).catch(err => {
+    console.error("写真の取得に失敗しました", err);
   });
 });
-
