@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>uchida-map</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header>
+    <nav>
+      <ul>
+        <li><a href="index.html">地図</a></li>
+        <li><a href="how-to.html">使い方</a></li>
+        <li><a href="contact.html">コンタクト</a></li>
+      </ul>
+    </nav>
+  </header>
+
+  <main>
+    <h2>あなたの旅の思い出を地図上に</h2>
+    <label for="fileInput" id="uploadLabel">写真をアップロード</label>
+    <input type="file" id="fileInput" accept="image/*" multiple />
+    <div id="map"></div>
+    <h3>画像一覧とメモ</h3>
+    <div id="imageList"></div>
+  </main>
+
+  <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/exif-js"></script>
+  <script src="script.js"></script>
+</body>
+</html>
