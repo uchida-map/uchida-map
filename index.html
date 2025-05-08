@@ -131,7 +131,7 @@
         const cursor = e.target.result;
         let isDuplicate = false;
         if (cursor) {
-          if (cursor.value.base64 === photoData.base64) {
+          if (normalizeBase64(cursor.value.base64) === normalizeBase64(photoData.base64)) {
             isDuplicate = true; // 重複発見
           }
           cursor.continue();
@@ -141,6 +141,11 @@
           savePhoto(photoData);
         }
       };
+    }
+
+    // base64を正規化（余分なスペースや変換を除去）
+    function normalizeBase64(base64) {
+      return base64.replace(/[\n\r]/g, "").replace(/\s+/g, "");
     }
 
     // IndexedDBに保存
