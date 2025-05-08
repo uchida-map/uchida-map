@@ -126,6 +126,7 @@
       const store = tx.objectStore("photos");
       const req = store.add(photoData);
       req.onsuccess = () => loadAllPhotos(); // 保存後再読み込み
+      req.onerror = () => alert("保存に失敗しました");
     }
 
     // IndexedDBから全件読み込み
